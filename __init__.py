@@ -2,8 +2,8 @@ bl_info = {
     'name': "gret",
     'author': "greisane",
     'description': "Collection of Blender tools",
-    'version': (1, 4, 0),
-    'blender': (4, 0, 1),
+    'version': (1, 4, 1),
+    'blender': (5, 0, 0),
     'location': "3D View > Tools",
     'category': "Object",
     'doc_url': "https://github.com/greisane/gret#readme",
@@ -21,7 +21,17 @@ from .log import log, logd, logger
 # Names here will be accessible as imports from other modules
 class AddonPreferencesWrapper:
     def __getattr__(self, attr):
-        return getattr(bpy.context.preferences.addons[__package__].preferences, attr)
+        try:
+            addon_prefs = bpy.context.preferences.addons.get(__package__)
+            if addon_prefs:
+                return getattr(addon_prefs.preferences, attr)
+        except:
+            pass
+        # Fallback to default values defined in GretAddonPreferences
+        prop = GretAddonPreferences.bl_rna.properties.get(attr)
+        if prop:
+            return getattr(prop, "default", None)
+        return None
 prefs = AddonPreferencesWrapper()
 
 def import_or_reload_modules(module_names, package_name):

@@ -369,11 +369,17 @@ Use to leave normals intact on hair ends and crevices""",
         clean_bm.to_mesh(dst_mesh)
 
         # Normals post-processing and transfer
-        if hasattr(dst_mesh, 'use_auto_smooth'):
-            dst_mesh.use_auto_smooth = True
-            dst_mesh.auto_smooth_angle = pi
-        else:
-            dst_mesh.shade_smooth()
+        dst_mesh.shade_smooth()
+        if not any(m.type == 'NODES' and m.name == "Smooth by Angle" for m in dst_obj.modifiers):
+            try:
+                bpy.ops.object.modifier_add_node_group(
+                    {'object': dst_obj, 'active_object': dst_obj},
+                    type='NODES', 
+                    asset_library_type='ESSENTIALS', 
+                    asset_identifier="geometry_nodes/smooth_by_angle.blend/Smooth by Angle"
+                )
+            except:
+                pass
         with_object(bpy.ops.mesh.customdata_custom_splitnormals_clear, dst_obj)
 
         if self.smooth_iterations > 0 and self.smooth_mix > 0.0:

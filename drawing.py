@@ -1,45 +1,51 @@
 from gpu_extras.batch import batch_for_shader
 from itertools import chain
-# import bgl
 import base64
 import blf
 import bpy
 import gpu
 import numpy as np
 
-# Create the shader to draw the texture
-vertex_out = gpu.types.GPUStageInterfaceInfo("my_interface")
-vertex_out.smooth('VEC2', "texCoord_interp")
-shader_info = gpu.types.GPUShaderCreateInfo()
-shader_info.push_constant('MAT4', "ModelViewProjectionMatrix")
-shader_info.push_constant('VEC4', "color")
-shader_info.sampler(0, 'FLOAT_2D', "image")
-shader_info.vertex_in(0, 'VEC2', "pos")
-shader_info.vertex_in(1, 'VEC2', "texCoord")
-shader_info.vertex_out(vertex_out)
-shader_info.fragment_out(0, 'VEC4', "fragColor")
+# Shaders are initialized lazily to avoid errors in background mode
+_shaders = {}
 
-shader_info.vertex_source("""
-/* keep in sync with intern/opencolorio/gpu_shader_display_transform_vertex.glsl */
-void main()
-{
-  gl_Position = ModelViewProjectionMatrix * vec4(pos.xy, 0.0f, 1.0f);
-  gl_Position.z = 1.0;
-  texCoord_interp = texCoord;
-}
-""")
+def get_shader(name):
+    if name not in _shaders:
+        if name == 'IMAGE':
+            _shaders[name] = gpu.shader.from_builtin(shader_id='IMAGE')
+        elif name == 'UNIFORM_COLOR':
+            _shaders[name] = gpu.shader.from_builtin(shader_id='UNIFORM_COLOR')
+        elif name == 'IMAGE_ALPHA':
+            # Create the shader to draw the texture
+            vertex_out = gpu.types.GPUStageInterfaceInfo("my_interface")
+            vertex_out.smooth('VEC2', "texCoord_interp")
+            shader_info = gpu.types.GPUShaderCreateInfo()
+            shader_info.push_constant('MAT4', "ModelViewProjectionMatrix")
+            shader_info.push_constant('VEC4', "color")
+            shader_info.sampler(0, 'FLOAT_2D', "image")
+            shader_info.vertex_in(0, 'VEC2', "pos")
+            shader_info.vertex_in(1, 'VEC2', "texCoord")
+            shader_info.vertex_out(vertex_out)
+            shader_info.fragment_out(0, 'VEC4', "fragColor")
 
-shader_info.fragment_source("""
-void main()
-{
-  fragColor = texture(image, texCoord_interp) * color;
-}
-""")
+            shader_info.vertex_source("""
+            /* keep in sync with intern/opencolorio/gpu_shader_display_transform_vertex.glsl */
+            void main()
+            {
+              gl_Position = ModelViewProjectionMatrix * vec4(pos.xy, 0.0f, 1.0f);
+              gl_Position.z = 1.0;
+              texCoord_interp = texCoord;
+            }
+            """)
 
-shader_image = gpu.shader.from_builtin('IMAGE')
-shader_solid = gpu.shader.from_builtin('UNIFORM_COLOR')
-shader_image_alpha = gpu.shader.create_from_info(shader_info)
-del shader_info
+            shader_info.fragment_source("""
+            void main()
+            {
+              fragColor = texture(image, texCoord_interp) * color;
+            }
+            """)
+            _shaders[name] = gpu.shader.create_from_info(shader_info)
+    return _shaders[name]
 
 h1_font_size = 17
 p_font_size = 13
@@ -71,7 +77,7 @@ class UVSheetTheme:
 icon_b64 = {
     'HELP': r"////AP///wD///8A////AP///wD///8n////cP///5T///+W////dv///zP///8A////AP///wD///8A////AP///wD///8A////AP///yP///+0////////////////////////////////////xv///zD///8A////AP///wD///8A////AP///zr////v///////////////2////V////0T////m///////////////4////VP///wD///8A////AP///x3////t////////////////////tP///wD///8A////j/////////////////////n///80////AP///wD///+p/////////////////////////+7///81////Iv///9n/////////////////////////y////wH///8Y/////P/////////////////////////5////k////5P////t//////////////////////////////84////W///////////////////////////////8v///wD///8A////Z////+j/////////////////////////fv///3z///////////////////////////////3///8g////AP///wD///8b////4v///////////////////5////97////////////////////////////////////4v///43///8V////AP///1z///////////////////+e////Wf/////////////////////////9////9P//////////////pv///wD///8Z////////////////////fP///xb////7//////////////+H////Ff///23//////////////5T///8A////IP///////////////////zT///8A////o///////////////nP///wD///8C////Vf///17///8G////AP///3L//////////////8b///8A////AP///xn////p//////////z///9P////AP///wD///8A////AP///zj////z//////////f///8u////AP///wD///8A////NP///+v//////////f///6j///9i////X////6D////6//////////X///9L////AP///wD///8A////AP///wD///8c////qf////3//////////////////////////////7z///8p////AP///wD///8A////AP///wD///8A////AP///wD///8e////Zv///4n///+M////bP///yn///8A////AP///wD///8A////AA==",
     'RESIZE': r"////BP///1////9t////bf///23///9t////bf///xH///8A////AP///wD///8A////AP///wD///8A////AP///2H///////////////////////////////////8n////AP///wD///8A////AP///wD///8A////AP///wD///9w////////////////////7////9z////c////Iv///wD///8A////AP///wD///8A////AP///wD///8A////cP///////////////////+z///8v////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///3D/////////7v///+z/////////6////y7///8A////AP///wD///8A////AP///wD///8A////AP///wD///9w/////////9j///8w////7P/////////r////MP///wD///8A////AP///wD///8A////AP///wD///8A////cP/////////Y////AP///y/////s/////////+z///8w////AP///wD///8A////AP///wD///8A////AP///xP///8r////Jf///wD///8A////MP///+3/////////7P///y////8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8x////6//////////r////Lv///wD///8A////Iv///yf///8R////AP///wD///8A////AP///wD///8A////AP///y/////r/////////+v///8w////AP///97/////////cP///wD///8A////AP///wD///8A////AP///wD///8A////Lv///+v/////////7P///zD////e/////////3D///8A////AP///wD///8A////AP///wD///8A////AP///wD///8v////7P/////////s////8P////////9w////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///zD////q////////////////////cP///wD///8A////AP///wD///8A////AP///wD///8A////Iv///+D////g////8f///////////////////3D///8A////AP///wD///8A////AP///wD///8A////AP///yf///////////////////////////////////9h////AP///wD///8A////AP///wD///8A////AP///wD///8R////bf///23///9t////bf///23///9d////BA==",
-    'GRID': r"////AP///wD///8A////bv///6j///8b////AP///wD///8A////AP///x3///+o////bP///wD///8A////AP///wD///8A////AP///6r/////////Lf///wD///8A////AP///wD///8v/////////6f///8A////AP///wD///8A////AP///wD///+q/////////yz///8A////AP///wD///8A////L/////////+n////AP///wD///8A////a////6v///+r////4/////////+5////q////6v///+r////q////7r/////////4v///6v///+r////bv///6P//////////////////////////////////////////////////////////////////////////////6f///8a////LP///yz///+4/////////1H///8s////LP///yz///8s////U/////////+2////LP///yz///8b////AP///wD///8A////qv////////8t////AP///wD///8A////AP///y//////////p////wD///8A////AP///wD///8A////AP///6r/////////LP///wD///8A////AP///wD///8v/////////6f///8A////AP///wD///8A////AP///wD///+q/////////y3///8A////AP///wD///8A////L/////////+n////AP///wD///8A////AP///wD///8A////qv////////8s////AP///wD///8A////AP///y//////////p////wD///8A////AP///x7///8x////Mf///7r/////////Vf///zH///8x////Mf///zH///9X/////////7j///8x////Mf///x7///+j//////////////////////////////////////////////////////////////////////////////+n////aP///6b///+m////4f////////+1////pv///6b///+m////pv///7b/////////4P///6b///+m////av///wD///8A////AP///6r/////////LP///wD///8A////AP///wD///8v/////////6f///8A////AP///wD///8A////AP///wD///+q/////////y3///8A////AP///wD///8A////L/////////+n////AP///wD///8A////AP///wD///8A////a////6P///8a////AP///wD///8A////AP///xz///+j////af///wD///8A////AA==",
+    'GRID': r"////AP///wD///8A////bv///6j///8b////AP///wD///8A////AP///x3///+o////bP///wD///8A////AP///wD///8A////AP///6r/////////Lf///wD///8A////AP///wD///8v/////////6f///8A////AP///wD///8A////AP///wD///+q/////////yz///8A////AP///wD///8A////L/////////+n////AP///wD///8A////a////6v///+r////4/////////+5////q////6v///+r////q////7r/////////4v///6v///+r////bv///6P//////////////////////////////////////////////////////////////////////////////6f///8a////LP///yz///+4/////////1H///8s////LP///yz///8s////U/////////+2////LP///yz///8b////AP///wD///8A////qv////////8t////AP///wD///8A////AP///y//////////p////wD///8A////AP///wD///8A////AP///6r/////////LP///wD///8A////AP///wD///8v/////////6f///8A////AP///wD///8A////AP///wD///+q/////////y3///8A////AP///wD///8A////L/////////+n////AP///wD///8A////AP///wD///8A////a////6P///8a////AP///wD///8A////AP///xz///+j////af///wD///8A////AA==",
 }
 icon_textures = {}
 icon_size = (16, 16)
@@ -81,8 +87,6 @@ def image_to_base64(image_name):
     data = np.array(image.pixels) * np.iinfo(np.uint8).max  # Scale to [0..255]
     data = data.astype(np.int8).tobytes()
     return base64.b64encode(data)
-# from gret.drawing import image_to_base64
-# bpy.context.window_manager.clipboard = image_to_base64("image.png")
 
 def base64_to_pixels(s):
     if not s:
@@ -107,58 +111,49 @@ def get_icon(icon_id):
 def draw_image(x0, y0, x1, y1, image, color, texcoords=rect_texcoords, nearest=False):
     if not image:
         return
-    # XXX Filters not exposed in gpu module, workaround with bgl is simple enough however the state
-    # is messed up afterwards, causing other things to break.
-    nearest = False
-    if nearest:
-        image.gl_load()
-        shader_image_alpha.bind()
-        bgl.glEnable(bgl.GL_BLEND)
-        bgl.glEnable(bgl.GL_TEXTURE_2D)
-        bgl.glBindTexture(bgl.GL_TEXTURE_2D, image.bindcode)
-        bgl.glTexParameteri(bgl.GL_TEXTURE_2D, bgl.GL_TEXTURE_MIN_FILTER, bgl.GL_NEAREST)
-        bgl.glTexParameteri(bgl.GL_TEXTURE_2D, bgl.GL_TEXTURE_MAG_FILTER, bgl.GL_NEAREST)
-    else:
-        texture = gpu.texture.from_image(image)
-        shader_image_alpha.bind()
-        shader_image_alpha.uniform_sampler("image", texture)
-        shader_image_alpha.uniform_float("color", color)
+    
+    shader = get_shader('IMAGE_ALPHA')
+    shader.bind()
+    
+    texture = gpu.texture.from_image(image)
+    shader.uniform_sampler("image", texture)
+    shader.uniform_float("color", color)
+    
     gpu.state.blend_set('ALPHA')
-    batch_for_shader(shader_image_alpha, 'TRI_STRIP', {
+    batch_for_shader(shader, 'TRI_STRIP', {
         "pos": ((x0, y0), (x1, y0), (x0, y1), (x1, y1)),
         "texCoord": texcoords,
-    }).draw(shader_image_alpha)
+    }).draw(shader)
     gpu.state.blend_set('NONE')
-    if nearest:
-        bgl.glDisable(bgl.GL_TEXTURE_2D)
-        image.gl_free()
 
 def draw_icon(x0, y0, x1, y1, icon_id, color):
     texture = get_icon(icon_id)
     if not texture:
         return
-    shader_image_alpha.bind()
-    shader_image_alpha.uniform_sampler("image", texture)
-    shader_image_alpha.uniform_float("color", color)
+    shader = get_shader('IMAGE_ALPHA')
+    shader.bind()
+    shader.uniform_sampler("image", texture)
+    shader.uniform_float("color", color)
     gpu.state.blend_set('ALPHA')
-    batch_for_shader(shader_image_alpha, 'TRI_STRIP', {
+    batch_for_shader(shader, 'TRI_STRIP', {
         "pos": ((x0, y0), (x1, y0), (x0, y1), (x1, y1)),
         "texCoord": rect_texcoords,
-    }).draw(shader_image_alpha)
+    }).draw(shader)
     gpu.state.blend_set('NONE')
 
 def draw_point(x, y, color, size=1.0):
     if len(color) == 3:
         color = *color, 1.0
     use_blend = color[3] < 1.0
-    shader_solid.bind()
-    shader_solid.uniform_float("color", color)
+    shader = get_shader('UNIFORM_COLOR')
+    shader.bind()
+    shader.uniform_float("color", color)
     if use_blend:
         gpu.state.blend_set('ALPHA')
     gpu.state.point_size_set(size)
-    batch_for_shader(shader_solid, 'POINTS', {
+    batch_for_shader(shader, 'POINTS', {
         "pos": [(x, y)],
-    }).draw(shader_solid)
+    }).draw(shader)
     if use_blend:
         gpu.state.blend_set('NONE')
 
@@ -166,13 +161,14 @@ def draw_box_fill(x0, y0, x1, y1, color):
     if len(color) == 3:
         color = *color, 1.0
     use_blend = color[3] < 1.0
-    shader_solid.bind()
-    shader_solid.uniform_float("color", color)
+    shader = get_shader('UNIFORM_COLOR')
+    shader.bind()
+    shader.uniform_float("color", color)
     if use_blend:
         gpu.state.blend_set('ALPHA')
-    batch_for_shader(shader_solid, 'TRI_STRIP', {
+    batch_for_shader(shader, 'TRI_STRIP', {
         "pos": ((x0, y0), (x1, y0), (x0, y1), (x1, y1)),
-    }).draw(shader_solid)
+    }).draw(shader)
     if use_blend:
         gpu.state.blend_set('NONE')
 
@@ -180,58 +176,58 @@ def draw_box(x0, y0, x1, y1, color, width=1.0):
     if len(color) == 3:
         color = *color, 1.0
     use_blend = color[3] < 1.0
-    shader_solid.bind()
-    shader_solid.uniform_float("color", color)
+    shader = get_shader('UNIFORM_COLOR')
+    shader.bind()
+    shader.uniform_float("color", color)
     if use_blend:
         gpu.state.blend_set('ALPHA')
     gpu.state.line_width_set(width)
-    batch_for_shader(shader_solid, 'LINE_STRIP', {
+    batch_for_shader(shader, 'LINE_STRIP', {
         "pos": ((x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)),
-    }).draw(shader_solid)
+    }).draw(shader)
     if use_blend:
         gpu.state.blend_set('NONE')
 
 def batch_rects(rects):
+    shader = get_shader('UNIFORM_COLOR')
     pos = chain.from_iterable(
         ((x0, y0), (x1, y0), (x1, y1), (x0, y1)) for x0, y0, x1, y1 in rects
     )
     indices = chain.from_iterable(
         ((i0 + k, i1 + k) for i0, i1 in rect_indices) for k in range(0, len(rects) * 4, 4)
     )
-    batch = batch_for_shader(shader_solid, 'LINES', {"pos": list(pos)}, indices=list(indices))
+    batch = batch_for_shader(shader, 'LINES', {"pos": list(pos)}, indices=list(indices))
     return batch
 
 def batch_points(points):
-    batch = batch_for_shader(shader_solid, 'POINTS', {"pos": points})
+    shader = get_shader('UNIFORM_COLOR')
+    batch = batch_for_shader(shader, 'POINTS', {"pos": points})
     return batch
 
 def draw_solid_batch(batch, color, line_width=None, point_size=None, use_clip=False):
     if len(color) == 3:
         color = *color, 1.0
     use_blend = color[3] < 1.0
-    shader_solid.bind()
-    shader_solid.uniform_float("color", color)
+    shader = get_shader('UNIFORM_COLOR')
+    shader.bind()
+    shader.uniform_float("color", color)
     if use_blend:
         gpu.state.blend_set('ALPHA')
-    use_clip = False  # XXX Once again, using bgl breaks things...
-    if use_clip:
-        bgl.glEnable(bgl.GL_SCISSOR_TEST)
     if line_width is not None:
         gpu.state.line_width_set(line_width)
     if point_size is not None:
         gpu.state.point_size_set(point_size)
-    batch.draw(shader_solid)
+    batch.draw(shader)
     if use_blend:
         gpu.state.blend_set('NONE')
-    if use_clip:
-        bgl.glDisable(bgl.GL_SCISSOR_TEST)
 
 def draw_grid(x, y, grid_width, grid_height, num_cols, num_rows, color, width=1.0):
     if len(color) == 3:
         color = *color, 1.0
     use_blend = color[3] < 1.0
-    shader_solid.bind()
-    shader_solid.uniform_float("color", color)
+    shader = get_shader('UNIFORM_COLOR')
+    shader.bind()
+    shader.uniform_float("color", color)
     x0, y0 = x, y
     x1, y1 = x + grid_width * num_cols, y + grid_height * num_rows
     lines = []
@@ -244,9 +240,9 @@ def draw_grid(x, y, grid_width, grid_height, num_cols, num_rows, color, width=1.
     gpu.state.line_width_set(width)
     if use_blend:
         gpu.state.blend_set('ALPHA')
-    batch_for_shader(shader_solid, 'LINES', {
+    batch_for_shader(shader, 'LINES', {
         "pos": lines,
-    }).draw(shader_solid)
+    }).draw(shader)
     if use_blend:
         gpu.state.blend_set('NONE')
 

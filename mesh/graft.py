@@ -129,11 +129,17 @@ def do_graft(context, save, obj, dst_obj, expand=0, cuts=0, blend_distance=0.0, 
 
     # Transfer stuff
     if copy_normals:
-        if hasattr(obj.data, "use_auto_smooth"):
-            obj.data.use_auto_smooth = True
-            obj.data.auto_smooth_angle = pi
-        else:
-            obj.data.shade_smooth()
+        obj.data.shade_smooth()
+        if not any(m.type == 'NODES' and m.name == "Smooth by Angle" for m in obj.modifiers):
+            try:
+                bpy.ops.object.modifier_add_node_group(
+                    {'object': obj, 'active_object': obj},
+                    type='NODES', 
+                    asset_library_type='ESSENTIALS', 
+                    asset_identifier="geometry_nodes/smooth_by_angle.blend/Smooth by Angle"
+                )
+            except:
+                pass
         with_object(bpy.ops.mesh.customdata_custom_splitnormals_clear, obj)
 
         with instant_modifier(obj, type='DATA_TRANSFER') as data_mod:

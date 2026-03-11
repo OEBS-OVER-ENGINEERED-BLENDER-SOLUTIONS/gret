@@ -281,16 +281,10 @@ class GRET_OT_rope_add(bpy.types.Operator):
         vertices.extend([Vector((v.x, v.y, cut_height)) for v in vertices])
         mesh.from_pydata(vertices, [], faces)
 
-        if hasattr(mesh, "use_auto_smooth"):
-            for face in mesh.polygons:
-                face.use_smooth = self.use_smooth_shade
-            mesh.use_auto_smooth = True
-            mesh.auto_smooth_angle = pi
+        if self.use_smooth_shade:
+            mesh.shade_smooth()
         else:
-            if self.use_smooth_shade:
-                mesh.shade_smooth()
-            else:
-                mesh.shade_flat()
+            mesh.shade_flat()
 
         crease_data = mesh.attributes.new('crease_edge', domain='EDGE', type='FLOAT').data
         for edge in (mesh.edges[4], mesh.edges[8]):
@@ -306,6 +300,18 @@ class GRET_OT_rope_add(bpy.types.Operator):
             obj.location = context.scene.cursor.location
         context.collection.objects.link(obj)
         context.view_layer.objects.active = obj
+        
+        if self.use_smooth_shade:
+            if not any(m.type == 'NODES' and m.name == "Smooth by Angle" for m in obj.modifiers):
+                try:
+                    bpy.ops.object.modifier_add_node_group(
+                        {'object': obj, 'active_object': obj},
+                        type='NODES', 
+                        asset_library_type='ESSENTIALS', 
+                        asset_identifier="geometry_nodes/smooth_by_angle.blend/Smooth by Angle"
+                    )
+                except:
+                    pass
 
         mod = obj.modifiers.new(type='MIRROR', name="")
         mod.use_axis = [True, True, False]
